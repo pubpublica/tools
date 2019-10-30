@@ -129,7 +129,6 @@ def pack_project(c, ctx):
         return info
 
     with Guard("· packing..."):
-        includes = context.get("INCLUDES") or []
         commit = ctx.get("SHORT_COMMIT_HASH")
         version = ctx.get("LOCAL_VERSION")
         timestamp = ctx.get("TIMESTAMP")
@@ -145,9 +144,12 @@ def pack_project(c, ctx):
         artifact_dir = os.path.abspath("build/")
         artifact_path = os.path.join(artifact_dir, artifact_file)
 
+        includes = ctx.get("INCLUDES") or []
+        paths = [ os.path.join(local_app_path, i) for i in includes ]
+
         with tarfile.open(artifact_path, "w:gz") as tar:
-            for f in includes:
-                tar.add(f, filter=_tar_filter)
+            for name, path in zip(includes, paths):
+                tar.add(path, arcname=name, filter=_tar_filter)
 
         ctx.update({"ARTIFACT_ID": artifact_name})
         ctx.update({"ARTIFACT_FILE": artifact_file})
