@@ -1,5 +1,6 @@
 {
-    "BUILD": {"LOCAL_CONFIG_PATH": "config/"},
+    "BUILD": {"LOCAL_CONFIG_PATH": "config/",
+              "LOCAL_APP_PATH": "../website/"},
     "PROVISION": {
         "DEPENDENCIES": [
             "python3.8",
