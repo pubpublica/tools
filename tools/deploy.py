@@ -358,8 +358,6 @@ def setup_pubpublica(c, ctx):
     if not (cfg := ctx.get("PUBPUBLICA") or {}):
         log.warning("unable to locate pubpublica config")
 
-    ctx = {**context, **cfg}
-
     local_config_path = ctx.get("LOCAL_CONFIG_PATH")
     if not os.path.isdir(local_config_path):
         raise Exception(f"local config path {local_config_path} does not exist")
@@ -377,7 +375,7 @@ def setup_pubpublica(c, ctx):
 
     with Guard("· building config files..."):
         template_path = os.path.join(local_config_path, config_file)
-        rendered_config = util.template(template_path, ctx)
+        rendered_config = util.template(template_path, {**ctx, **cfg})
 
     with Guard("· writing config files..."):
         config_string = json.dumps(rendered_config, indent=4)
