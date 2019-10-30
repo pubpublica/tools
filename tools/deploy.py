@@ -41,10 +41,15 @@ def build_context(c):
         context = {}
         context.update(config.get("BUILD", {}))
 
-        root = os.getcwd()
-        context.update({"LOCAL_ROOT": root})
+        local_config_path = os.path.abspath(context.get("LOCAL_CONFIG_PATH"))
+        context.update({"LOCAL_CONFIG_PATH": local_config_path})
 
-        version = util.version()
+        local_app_path = os.path.abspath(context.get("LOCAL_APP_PATH"))
+        context.update({"LOCAL_APP_PATH": local_app_path})
+
+        context.update(config.get("PROVISION", {}))
+        context.update(config.get("DEPLOY", {}))
+
         if pubpublica_config := config.get("PUBPUBLICA"):
             context.update({"PUBPUBLICA": pubpublica_config})
 
@@ -53,6 +58,9 @@ def build_context(c):
 
         if redis_config := config.get("REDIS"):
             context.update({"REDIS": redis_config})
+
+        version_file = os.path.join(local_app_path, "__version__.py")
+        version = util.version(version_file)
         context.update({"LOCAL_VERSION": version})
 
         commit = git.latest_commit_hash(c, ".")
