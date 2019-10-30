@@ -1,0 +1,9 @@
+fabric==2.5.0
+packaging==19.2
+Click==7.0
+jsonschema==3.1.1
+Jinja2==2.10.3
+termcolor==1.1.0
+requests==2.22.0
+git+https://github.com/jensecj/fabrikant.git
+git+https://github.com/jensecj/libpass-py.git
