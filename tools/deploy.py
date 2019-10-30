@@ -329,20 +329,19 @@ def setup_pubpublica_access(c, ctx):
                 raise Exception(f"failed to change group of deployment")
 
 
-def setup_pubpublica_virtualenv(c, context):
-    if not (deploy_path := context.get("DEPLOY_PATH")):
+def setup_pubpublica_virtualenv(c, ctx):
+    if not (deploy_path := ctx.get("DEPLOY_PATH")):
         raise Exception("unable to locate deployed app")
 
-    with Guard("· creating virtual environment..."):
-        venv_dir = os.path.join(deploy_path, "venv")
-        create_venv = f"python3.8 -m venv {venv_dir}"
+    venv_dir = os.path.join(deploy_path, "venv")
 
+    with Guard("· creating virtual environment..."):
+        create_venv = f"python3.8 -m venv {venv_dir}"
         ret = c.sudo(create_venv, hide=True, warn=True)
         if not ret.ok:
             raise Exception(f"failed creating virtual environment: {ret}")
 
     with Guard("· updating virtual environment..."):
-        venv_dir = os.path.join(deploy_path, "venv")
         pip_file = os.path.join(venv_dir, "bin", "pip3.8")
         requirements_file = os.path.join(deploy_path, "requirements.txt")
         pip_install = f"{pip_file} install -r {requirements_file}"
