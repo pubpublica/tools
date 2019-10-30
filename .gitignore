@@ -1,2 +1,5 @@
 __pycache__/
 venv/
+/check.sh
+/validate.sh
+build/
