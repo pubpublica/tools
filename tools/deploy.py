@@ -440,10 +440,9 @@ def entry(host, dry_run):
         local = Context()
         c = util.connect(host, sudo=True)
 
-        context = build_context(local)
+        PASS.unlock()           # TODO: only open if needed
 
-        # TODO: only open if needed
-        PASS.unlock()
+        context = build_context(local)
 
         if dry_run:
             print("DRY RUN")
