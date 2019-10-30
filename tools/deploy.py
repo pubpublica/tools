@@ -398,7 +398,7 @@ def setup_pubpublica(c, ctx):
 
 
 def pre_deploy(c, local, context):
-    print("PRE DEPLOY")
+    log.info("PRE DEPLOY")
     context.update({"DEPLOY_START_TIME": util.timestamp()})
     check_local_git_repo(local, context)
     check_deployment(c, context)
@@ -407,7 +407,9 @@ def pre_deploy(c, local, context):
 
 
 def deploy(c, context):
-    print("DEPLOY")
+    short_commit_hash = context.get("SHORT_COMMIT_HASH")
+    log.info(f"DEPLOYING: {short_commit_hash}")
+
     pack_project(c, context)
     transfer_project(c, context)
     unpack_project(c, context)
@@ -420,7 +422,7 @@ def deploy(c, context):
 
 
 def post_deploy(c, context):
-    print("POST DEPLOY")
+    log.info("POST DEPLOY")
 
     # TODO: only restart services whoose config has changed
     restart_service(c, "redis")
