@@ -17,8 +17,6 @@ from fabric import Config, Connection
 from fabrikant import fs, system, access
 from fabrikant.apps import git, systemd, apt
 
-from config import config
-
 import log
 import util
 from util import Guard, GuardWarning
@@ -38,14 +36,23 @@ PASS = PasswordStore()
 
 def build_context(c):
     with Guard("· gathering build information..."):
-        context = config.get("DEPLOY") or {}
-        context.update(config.get("PROVISION", {}))
+        config = util.template("pubpublica.json")
+
+        context = {}
         context.update(config.get("BUILD", {}))
 
         root = os.getcwd()
         context.update({"LOCAL_ROOT": root})
 
         version = util.version()
+        if pubpublica_config := config.get("PUBPUBLICA"):
+            context.update({"PUBPUBLICA": pubpublica_config})
+
+        if flask_config := config.get("FLASK"):
+            context.update({"FLASK": flask_config})
+
+        if redis_config := config.get("REDIS"):
+            context.update({"REDIS": redis_config})
         context.update({"LOCAL_VERSION": version})
 
         commit = git.latest_commit_hash(c, ".")
@@ -200,7 +207,7 @@ def setup_flask(c, context):
     # TODO: find some other approach for rendering and saving config files enmasse
     print("setting up flask")
 
-    if not (cfg := config.get("FLASK") or {}):
+    if not (cfg := ctx.get("FLASK") or {}):
         log.warning("unable to locate flask config")
 
     local_config_path = context.get("LOCAL_CONFIG_PATH")
@@ -235,7 +242,7 @@ def setup_flask(c, context):
 def setup_redis(c, context):
     print("setting up redis")
 
-    if not (cfg := config.get("REDIS") or {}):
+    if not (cfg := ctx.get("REDIS") or {}):
         log.warning("unable to locate redis config")
 
     local_config_path = context.get("LOCAL_CONFIG_PATH")
@@ -271,7 +278,8 @@ def setup_nginx(c, context):
     print("setting up nginx")
 
     with Guard("· building config files..."):
-        cfg = config.get("NGINX") or {}
+        if not (cfg := ctx.get("NGINX") or {}):
+            pass
 
         config_path = context.get("LOCAL_CONFIG_PATH")
         nginx_template = os.path.join(config_path, ".nginx")
@@ -336,7 +344,7 @@ def setup_pubpublica_virtualenv(c, context):
 def setup_pubpublica(c, context):
     print("setting up pubpublica")
 
-    if not (cfg := config.get("PUBPUBLICA") or {}):
+    if not (cfg := ctx.get("PUBPUBLICA") or {}):
         log.warning("unable to locate pubpublica config")
 
     ctx = {**context, **cfg}
