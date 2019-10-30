@@ -19,8 +19,8 @@ def timestamp():
     return datetime.datetime.utcnow().isoformat()
 
 
-def version():
-    with open("__version__.py", "r") as f:
+def version(file):
+    with open(file, "r") as f:
         version = f.read().strip()
         match = re.search("^\d+\.\d+\.\d+$", version)
 
