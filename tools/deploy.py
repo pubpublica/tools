@@ -73,56 +73,56 @@ def build_context(c):
         return context
 
 
-def check_local_git_repo(c, context):
-    with Guard("· checking git repo..."):
-        root = context.get("LOCAL_ROOT")
+def check_local_git_repo(c, ctx):
+    with Guard("· checking local git repo..."):
+        root = ctx.get("LOCAL_APP_PATH")
         dirty = git.is_dirty(c, root)
 
         if dirty is None:
-            raise GuardWarning(f"{root} is not a repository")
+            raise GuardWarning(f"{root} is not a git repository")
 
         if dirty:
-            raise GuardWarning("repository is dirty")
+            raise GuardWarning("local git repository is dirty")
 
 
-def check_deployment(c, context):
+def check_deployment(c, ctx):
     with Guard("· checking deployment..."):
-        app_path = context.get("APP_PATH")
-        id_file = context.get("DEPLOYED_ID_FILE")
+        app_path = ctx.get("APP_PATH")
+        id_file = ctx.get("DEPLOYED_ID_FILE")
         deployment_file = os.path.join(app_path, id_file)
         id = fs.read_file(c, deployment_file)
 
         if not id:
             raise GuardWarning("unable to find deployed id")
 
-        context.update({"DEPLOYED_ARTIFACT_ID": id})
+        ctx.update({"DEPLOYED_ARTIFACT_ID": id})
 
 
-def check_versions(c, context):
+def check_versions(c, ctx):
     with Guard("· checking versions..."):
-        production_path = context.get("PRODUCTION_PATH")
+        production_path = ctx.get("PRODUCTION_PATH")
         remote_ver_file = os.path.join(production_path, "__version__.py")
         v_remote = fs.read_file(c, remote_ver_file)
 
         if not v_remote:
             raise GuardWarning("unable to retrieve deployed version")
 
-        context.update({"REMOTE_VERSION": v_remote})
+        ctx.update({"REMOTE_VERSION": v_remote})
 
-        v_local = context.get("LOCAL_VERSION")
+        v_local = ctx.get("LOCAL_VERSION")
         if not util.version_newer(v_local, v_remote):
             raise GuardWarning(f"{v_local} is older or equal to deployed {v_remote}")
 
 
-def check_dependencies(c, context):
+def check_dependencies(c, ctx):
     with Guard("· checking dependencies..."):
-        deps = context.get("DEPENDENCIES") or []
+        deps = ctx.get("DEPENDENCIES") or []
         for dep in deps:
             if not apt.is_installed(c, dep):
                 raise Exception(f"{dep} is not installed.")
 
 
-def pack_project(c, context):
+def pack_project(c, ctx):
     def _tar_filter(info):
         if "__pycache__" in info.name:
             return None
@@ -130,12 +130,13 @@ def pack_project(c, context):
 
     with Guard("· packing..."):
         includes = context.get("INCLUDES") or []
-        commit = context.get("SHORT_COMMIT_HASH")
-        version = context.get("LOCAL_VERSION")
-        timestamp = context.get("TIMESTAMP")
+        commit = ctx.get("SHORT_COMMIT_HASH")
+        version = ctx.get("LOCAL_VERSION")
+        timestamp = ctx.get("TIMESTAMP")
         date = datetime.fromisoformat(timestamp).strftime("%Y-%m-%d")
 
-        app_path = context.get("APP_PATH")
+        app_path = ctx.get("APP_PATH")
+        local_app_path = ctx.get("LOCAL_APP_PATH")
 
         artifact_name = f"pubpublica--{date}--{version}--{commit}"
         artifact_ext = ".tar.gz"
@@ -148,9 +149,9 @@ def pack_project(c, context):
             for f in includes:
                 tar.add(f, filter=_tar_filter)
 
-        context.update({"ARTIFACT_ID": artifact_name})
-        context.update({"ARTIFACT_FILE": artifact_file})
-        context.update({"ARTIFACT_LOCAL_PATH": artifact_path})
+        ctx.update({"ARTIFACT_ID": artifact_name})
+        ctx.update({"ARTIFACT_FILE": artifact_file})
+        ctx.update({"ARTIFACT_LOCAL_PATH": artifact_path})
 
         md5 = hashlib.md5()
         block_size = 65536
@@ -158,26 +159,26 @@ def pack_project(c, context):
             while data := f.read(block_size):
                 md5.update(data)
 
-        context.update({"ARTIFACT_MD5": md5.hexdigest()})
+        ctx.update({"ARTIFACT_MD5": md5.hexdigest()})
 
         deploy_path = os.path.join(app_path, artifact_name)
-        context.update({"DEPLOY_PATH": deploy_path})
+        ctx.update({"DEPLOY_PATH": deploy_path})
 
 
-def transfer_project(c, context):
+def transfer_project(c, ctx):
     with Guard("· transferring..."):
-        local_artifact = context.get("ARTIFACT_LOCAL_PATH")
+        local_artifact = ctx.get("ARTIFACT_LOCAL_PATH")
         if not local_artifact:
             raise Exception("no artifact to deployed")
 
         if not os.path.isfile(local_artifact):
             raise Exception("artifact to be deployed is not a file")
 
-        deploy_path = context.get("DEPLOY_PATH")
+        deploy_path = ctx.get("DEPLOY_PATH")
         if not fs.create_directory(c, deploy_path, sudo=True):
             raise Exception("unable to create {deploy_path} on server")
 
-        artifact_file = context.get("ARTIFACT_FILE")
+        artifact_file = ctx.get("ARTIFACT_FILE")
         artifact_path = os.path.join(deploy_path, artifact_file)
 
         temp_path = "/tmp"
@@ -188,10 +189,10 @@ def transfer_project(c, context):
         fs.move(c, remote_artifact, artifact_path, sudo=True)
 
 
-def unpack_project(c, context):
+def unpack_project(c, ctx):
     with Guard("· unpacking..."):
-        deploy_path = context.get("DEPLOY_PATH")
-        artifact = context.get("ARTIFACT_FILE")
+        deploy_path = ctx.get("DEPLOY_PATH")
+        artifact = ctx.get("ARTIFACT_FILE")
         artifact_path = os.path.join(deploy_path, artifact)
 
         cmd = f"tar -C {deploy_path} -xzf {artifact_path}"
@@ -210,7 +211,7 @@ def restart_service(c, service):
             raise GuardWarning(f"Failed to restart the {service} service")
 
 
-def setup_flask(c, context):
+def setup_flask(c, ctx):
     # TODO: merge with setup_pubpublica?
     # TODO: find some other approach for rendering and saving config files enmasse
     print("setting up flask")
@@ -218,11 +219,11 @@ def setup_flask(c, context):
     if not (cfg := ctx.get("FLASK") or {}):
         log.warning("unable to locate flask config")
 
-    local_config_path = context.get("LOCAL_CONFIG_PATH")
+    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
     if not os.path.isdir(local_config_path):
         raise Exception(f"local config path {local_config_path} does not exist")
 
-    if not (deploy_path := context.get("DEPLOY_PATH")):
+    if not (deploy_path := ctx.get("DEPLOY_PATH")):
         raise Exception("dont know where the app is located")
 
     if not (config_file := cfg.get("FLASK_CONFIG_FILE")):
@@ -234,7 +235,7 @@ def setup_flask(c, context):
             cfg.update({"FLASK_SECRET_KEY": pw})
             cfg.pop("FLASK_SECRET_KEY_PATH", None)
 
-        config_path = context.get("LOCAL_CONFIG_PATH")
+        config_path = ctx.get("LOCAL_CONFIG_PATH")
         config_file = cfg.get("FLASK_CONFIG_FILE")
         flask_template = os.path.join(config_path, config_file)
         rendered_config = util.template(flask_template, cfg)
@@ -247,17 +248,17 @@ def setup_flask(c, context):
         fs.move(c, tmpfile, remote_config_file_path, sudo=True)
 
 
-def setup_redis(c, context):
+def setup_redis(c, ctx):
     print("setting up redis")
 
     if not (cfg := ctx.get("REDIS") or {}):
         log.warning("unable to locate redis config")
 
-    local_config_path = context.get("LOCAL_CONFIG_PATH")
+    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
     if not os.path.isdir(local_config_path):
         raise Exception(f"local config path {local_config_path} does not exist")
 
-    if not (deploy_path := context.get("DEPLOY_PATH")):
+    if not (deploy_path := ctx.get("DEPLOY_PATH")):
         raise Exception("dont know where the app is located")
 
     if not (config_file := cfg.get("REDIS_CONFIG_FILE")):
@@ -281,7 +282,7 @@ def setup_redis(c, context):
         fs.move(c, tmpfile, remote_config_file_path, sudo=True)
 
 
-def setup_nginx(c, context):
+def setup_nginx(c, ctx):
     # TODO: copy over nginx settings
     print("setting up nginx")
 
@@ -289,7 +290,7 @@ def setup_nginx(c, context):
         if not (cfg := ctx.get("NGINX") or {}):
             pass
 
-        config_path = context.get("LOCAL_CONFIG_PATH")
+        config_path = ctx.get("LOCAL_CONFIG_PATH")
         nginx_template = os.path.join(config_path, ".nginx")
         nginx_config = util.template(nginx_template, cfg)
 
@@ -297,12 +298,12 @@ def setup_nginx(c, context):
         pass
 
 
-def setup_pubpublica_access(c, context):
-    if not (deploy_path := context.get("DEPLOY_PATH")):
+def setup_pubpublica_access(c, ctx):
+    if not (deploy_path := ctx.get("DEPLOY_PATH")):
         raise Exception("unable to locate deployed app")
 
-    user = context.get("USER")
-    group = context.get("GROUP")
+    user = ctx.get("USER")
+    group = ctx.get("GROUP")
 
     with Guard("· creating user and group..."):
         if user:
@@ -349,7 +350,7 @@ def setup_pubpublica_virtualenv(c, context):
             raise Exception(f"failed to update the virtual environment: {ret}")
 
 
-def setup_pubpublica(c, context):
+def setup_pubpublica(c, ctx):
     print("setting up pubpublica")
 
     if not (cfg := ctx.get("PUBPUBLICA") or {}):
@@ -357,14 +358,14 @@ def setup_pubpublica(c, context):
 
     ctx = {**context, **cfg}
 
-    local_config_path = context.get("LOCAL_CONFIG_PATH")
+    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
     if not os.path.isdir(local_config_path):
         raise Exception(f"local config path {local_config_path} does not exist")
 
-    if not (app_path := context.get("APP_PATH")):
+    if not (app_path := ctx.get("APP_PATH")):
         raise Exception("dont know where the app is located")
 
-    if not (deploy_path := context.get("DEPLOY_PATH")):
+    if not (deploy_path := ctx.get("DEPLOY_PATH")):
         raise Exception("unable to locate deployed app")
 
     if not (config_file := cfg.get("PUBPUBLICA_CONFIG_FILE")):
@@ -386,12 +387,12 @@ def setup_pubpublica(c, context):
     setup_pubpublica_access(c, ctx)
 
     with Guard("· linking production to new deployment..."):
-        production_path = context.get("PRODUCTION_PATH")
+        production_path = ctx.get("PRODUCTION_PATH")
         if not fs.create_symlink(c, deploy_path, production_path, force=True, sudo=True):
             raise Exception(f"failed to link {production_path} to newly deployed app")
 
-    version_file = context.get("DEPLOYED_ID_FILE")
-    new_version = context.get("ARTIFACT_ID")
+    version_file = ctx.get("DEPLOYED_ID_FILE")
+    new_version = ctx.get("ARTIFACT_ID")
     version_file_path = os.path.join(app_path, version_file)
     if not fs.write_file(c, new_version, version_file_path, overwrite=True, sudo=True):
         raise Exception("unable to write new deployment version to {version_file}")
