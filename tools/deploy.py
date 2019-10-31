@@ -385,6 +385,7 @@ def setup_pubpublica(c, ctx):
 
 
 def pre_deploy(c, local, context):
+    # TODO: async pre-deploy
     log.info("PRE DEPLOY")
     context.update({"DEPLOY_START_TIME": util.timestamp()})
     check_local_git_repo(local, context)
@@ -411,9 +412,12 @@ def deploy(c, context):
 
 
 def post_deploy(c, context):
+    # TODO: async post-deploy
     log.info("POST DEPLOY")
 
-    # TODO: only restart services whoose config has changed
+    # TODO: only restart services whoose config has changed, set in context?
+
+    # TODO: clear redis view-cache?
     restart_service(c, "redis")
     restart_service(c, "nginx")
     restart_service(c, "pubpublica")
