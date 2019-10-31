@@ -149,16 +149,19 @@ def pack_project(c, ctx):
         artifact_dir = os.path.abspath("build/")
         artifact_path = os.path.join(artifact_dir, artifact_file)
 
+        ctx.update({"ARTIFACT_ID": artifact_name})
+        ctx.update({"ARTIFACT_FILE": artifact_file})
+        ctx.update({"ARTIFACT_LOCAL_PATH": artifact_path})
+
+        deploy_path = os.path.join(app_path, artifact_name)
+        ctx.update({"DEPLOY_PATH": deploy_path})
+
         includes = ctx.get("INCLUDES") or []
         paths = [ os.path.join(local_app_path, i) for i in includes ]
 
         with tarfile.open(artifact_path, "w:gz") as tar:
             for name, path in zip(includes, paths):
                 tar.add(path, arcname=name, filter=_tar_filter)
-
-        ctx.update({"ARTIFACT_ID": artifact_name})
-        ctx.update({"ARTIFACT_FILE": artifact_file})
-        ctx.update({"ARTIFACT_LOCAL_PATH": artifact_path})
 
         md5 = hashlib.md5()
         block_size = 65536
@@ -167,9 +170,6 @@ def pack_project(c, ctx):
                 md5.update(data)
 
         ctx.update({"ARTIFACT_MD5": md5.hexdigest()})
-
-        deploy_path = os.path.join(app_path, artifact_name)
-        ctx.update({"DEPLOY_PATH": deploy_path})
 
 
 def transfer_project(c, ctx):
