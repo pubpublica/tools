@@ -6,6 +6,7 @@ from datetime import datetime
 import getpass
 import tarfile
 import hashlib
+import secrets
 from dataclasses import dataclass
 
 from libpass import PasswordStore
@@ -218,23 +219,40 @@ def restart_service(c, service):
             raise GuardWarning(f"Failed to restart the {service} service")
 
 
-def setup_flask(c, ctx):
-    # TODO: merge with setup_pubpublica?
-    # TODO: find some other approach for rendering and saving config files enmasse
-    print("setting up flask")
+def ensure_context(c, ctx):
+    if not (local_config_path := ctx.get("LOCAL_CONFIG_PATH")):
+        raise Exception(f"path to local config directory is not set")
 
-    if not (cfg := ctx.get("FLASK") or {}):
-        log.warning("unable to locate flask config")
-
-    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
     if not os.path.isdir(local_config_path):
         raise Exception(f"local config path {local_config_path} does not exist")
+
+    if not (app_path := ctx.get("APP_PATH")):
+        raise Exception("path to local app is not set")
 
     if not (deploy_path := ctx.get("DEPLOY_PATH")):
         raise Exception("dont know where the app is located")
 
-    if not (config_file := cfg.get("FLASK_CONFIG_FILE")):
-        raise Exception("dont know where the flask config file is located")
+
+def render_and_upload(c, template_path, remote_path, cfg):
+    rendered_config = util.template(template_path, cfg)
+    contents = json.dumps(rendered_config, indent=4)
+
+    tmpfile = remote_path + ".new" + secrets.token_hex(3)  # try to now overwrite existing files
+    fs.write_file(c, contents, tmpfile, overwrite=True, sudo=True)
+    fs.move(c, tmpfile, remote_path, sudo=True)
+
+
+def setup_flask(c, ctx):
+    # TODO: merge with setup_pubpublica?
+    print("setting up flask")
+    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
+    deploy_path = ctx.get("DEPLOY_PATH")
+
+    if not (cfg := ctx.get("FLASK") or {}):
+        log.warning("unable to locate flask config")
+
+    if not (template_file := cfg.get("FLASK_CONFIG_FILE")):
+        raise Exception("path to flask config template is not set")
 
     with Guard("· building config files..."):
         if path := cfg.get("FLASK_SECRET_KEY_PATH"):
@@ -243,33 +261,20 @@ def setup_flask(c, ctx):
             cfg.pop("FLASK_SECRET_KEY_PATH", None)
 
         config_path = ctx.get("LOCAL_CONFIG_PATH")
-        config_file = cfg.get("FLASK_CONFIG_FILE")
-        flask_template = os.path.join(config_path, config_file)
-        rendered_config = util.template(flask_template, cfg)
-
-    with Guard("· writing config files..."):
-        config_contents = json.dumps(rendered_config, indent=4)
-        remote_config_file_path = os.path.join(deploy_path, config_file)
-        tmpfile = remote_config_file_path + ".new"
-        fs.write_file(c, config_contents, tmpfile, overwrite=True, sudo=True)
-        fs.move(c, tmpfile, remote_config_file_path, sudo=True)
-
+        template_path = os.path.join(config_path, template_file)
+        remote_path = os.path.join(deploy_path, template_file)
+        render_and_upload(c, template_path, remote_path, cfg)
 
 def setup_redis(c, ctx):
     print("setting up redis")
+    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
+    deploy_path = ctx.get("DEPLOY_PATH")
 
     if not (cfg := ctx.get("REDIS") or {}):
         log.warning("unable to locate redis config")
 
-    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
-    if not os.path.isdir(local_config_path):
-        raise Exception(f"local config path {local_config_path} does not exist")
-
-    if not (deploy_path := ctx.get("DEPLOY_PATH")):
-        raise Exception("dont know where the app is located")
-
-    if not (config_file := cfg.get("REDIS_CONFIG_FILE")):
-        raise Exception("dont know where the redis config file is located")
+    if not (template_file := cfg.get("REDIS_CONFIG_FILE")):
+        raise Exception("path to redis config template is not set")
 
     with Guard("· building config files..."):
         if password_path := cfg.get("REDIS_PASSWORD_PATH"):
@@ -277,17 +282,9 @@ def setup_redis(c, ctx):
             cfg.update({"REDIS_PASSWORD": pw})
             cfg.pop("REDIS_PASSWORD_PATH", None)
 
-        redis_template = os.path.join(local_config_path, config_file)
-        rendered_config = util.template(redis_template, cfg)
-
-    with Guard("· writing config files..."):
-        # TODO: extract this 'dump json to string, create remote tmp file, write contents, overwrite remote file' flow
-        config_contents = json.dumps(rendered_config, indent=4)
-        remote_config_file_path = os.path.join(deploy_path, config_file)
-        tmpfile = remote_config_file_path + ".new"
-        fs.write_file(c, config_contents, tmpfile, overwrite=True, sudo=True)
-        fs.move(c, tmpfile, remote_config_file_path, sudo=True)
-
+        template_path = os.path.join(local_config_path, template_file)
+        remote_path = os.path.join(deploy_path, template_file)
+        render_and_upload(c, template_path, remote_path, cfg)
 
 def setup_nginx(c, ctx):
     # TODO: copy over nginx settings
@@ -299,16 +296,9 @@ def setup_nginx(c, ctx):
 
         config_path = ctx.get("LOCAL_CONFIG_PATH")
         nginx_template = os.path.join(config_path, ".nginx")
-        nginx_config = util.template(nginx_template, cfg)
-
-    with Guard("· writing config files..."):
-        pass
 
 
 def setup_pubpublica_access(c, ctx):
-    if not (deploy_path := ctx.get("DEPLOY_PATH")):
-        raise Exception("unable to locate deployed app")
-
     user = ctx.get("USER")
     group = ctx.get("GROUP")
 
@@ -325,6 +315,7 @@ def setup_pubpublica_access(c, ctx):
                 raise Exception(f"failed to add user '{user} to group '{group}")
 
     with Guard("· changing permissions..."):
+        deploy_path = ctx.get("DEPLOY_PATH")
         if user:
             if not access.change_owner(c, deploy_path, user, recursive=True, sudo=True):
                 raise Exception(f"failed to change owner of deployment")
@@ -335,8 +326,7 @@ def setup_pubpublica_access(c, ctx):
 
 
 def setup_pubpublica_virtualenv(c, ctx):
-    if not (deploy_path := ctx.get("DEPLOY_PATH")):
-        raise Exception("unable to locate deployed app")
+    deploy_path = ctx.get("DEPLOY_PATH")
 
     venv_dir = os.path.join(deploy_path, "venv")
 
@@ -359,39 +349,26 @@ def setup_pubpublica_virtualenv(c, ctx):
 def setup_pubpublica(c, ctx):
     print("setting up pubpublica")
 
+    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
+    deploy_path = ctx.get("DEPLOY_PATH")
+    app_path = ctx.get("APP_PATH")
+    production_path = ctx.get("PRODUCTION_PATH")
+
     if not (cfg := ctx.get("PUBPUBLICA") or {}):
         log.warning("unable to locate pubpublica config")
 
-    local_config_path = ctx.get("LOCAL_CONFIG_PATH")
-    if not os.path.isdir(local_config_path):
-        raise Exception(f"local config path {local_config_path} does not exist")
-
-    if not (app_path := ctx.get("APP_PATH")):
-        raise Exception("dont know where the app is located")
-
-    if not (deploy_path := ctx.get("DEPLOY_PATH")):
-        raise Exception("unable to locate deployed app")
-
-    if not (config_file := cfg.get("PUBPUBLICA_CONFIG_FILE")):
-        raise Exception("dont know where the config_file is located")
-
-    remote_config_file_path = os.path.join(deploy_path, config_file)
+    if not (template_file := cfg.get("PUBPUBLICA_CONFIG_FILE")):
+        raise Exception("path to pubpublica config template is not set")
 
     with Guard("· building config files..."):
-        template_path = os.path.join(local_config_path, config_file)
-        rendered_config = util.template(template_path, {**ctx, **cfg})
-
-    with Guard("· writing config files..."):
-        config_string = json.dumps(rendered_config, indent=4)
-        tmpfile = remote_config_file_path + ".new"
-        fs.write_file(c, config_string, tmpfile, overwrite=True, sudo=True)
-        fs.move(c, tmpfile, remote_config_file_path, sudo=True)
+        template_path = os.path.join(local_config_path, template_file)
+        remote_path = os.path.join(deploy_path, template_file)
+        render_and_upload(c, template_path, remote_path, {**ctx, **cfg})
 
     setup_pubpublica_virtualenv(c, ctx)
     setup_pubpublica_access(c, ctx)
 
     with Guard("· linking production to new deployment..."):
-        production_path = ctx.get("PRODUCTION_PATH")
         if not fs.create_symlink(c, deploy_path, production_path, force=True, sudo=True):
             raise Exception(f"failed to link {production_path} to newly deployed app")
 
@@ -418,6 +395,8 @@ def deploy(c, context):
     pack_project(c, context)
     transfer_project(c, context)
     unpack_project(c, context)
+
+    ensure_context(c, context)
 
     setup_redis(c, context)
     setup_nginx(c, context)
