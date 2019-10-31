@@ -63,7 +63,7 @@ def build_context(c):
         version = util.version(version_file)
         context.update({"LOCAL_VERSION": version})
 
-        commit = git.latest_commit_hash(c, ".")
+        commit = git.latest_commit_hash(c, local_app_path)
         context.update({"COMMIT_HASH": commit})
         context.update({"SHORT_COMMIT_HASH": commit[:7]})
 
