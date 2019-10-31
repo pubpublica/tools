@@ -345,6 +345,15 @@ def setup_pubpublica_virtualenv(c, ctx):
         if not ret.ok:
             raise Exception(f"failed to update the virtual environment: {ret}")
 
+def update_deployed_id(c, ctx):
+    app_path = ctx.get("APP_PATH")
+    version_file = ctx.get("DEPLOYED_ID_FILE")
+    new_version = ctx.get("ARTIFACT_ID")
+    version_file_path = os.path.join(app_path, version_file)
+
+    if not fs.write_file(c, new_version, version_file_path, overwrite=True, sudo=True):
+        raise Exception("unable to write new deployment version to {version_file}")
+
 
 def setup_pubpublica(c, ctx):
     print("setting up pubpublica")
@@ -372,11 +381,7 @@ def setup_pubpublica(c, ctx):
         if not fs.create_symlink(c, deploy_path, production_path, force=True, sudo=True):
             raise Exception(f"failed to link {production_path} to newly deployed app")
 
-    version_file = ctx.get("DEPLOYED_ID_FILE")
-    new_version = ctx.get("ARTIFACT_ID")
-    version_file_path = os.path.join(app_path, version_file)
-    if not fs.write_file(c, new_version, version_file_path, overwrite=True, sudo=True):
-        raise Exception("unable to write new deployment version to {version_file}")
+    update_deployed_id(c, ctx)
 
 
 def pre_deploy(c, local, context):
