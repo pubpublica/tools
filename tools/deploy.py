@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 from datetime import datetime
 import getpass
 import tarfile
@@ -464,13 +465,22 @@ def entry(host, dry_run):
 
         # TODO: validate context with jsonschema
 
+        start_time = datetime.now()
+
         pre_deploy(c, local, context)
         deploy(c, context)
         post_deploy(c, context)
 
         # util.print_json(context)
 
-        log.success("deployment complete")
+        end_time = datetime.now()
+
+        elapsed = end_time - start_time
+        total_seconds = int(elapsed.total_seconds())
+        hours, remainder = divmod(total_seconds,60*60)
+        minutes, seconds = divmod(remainder,60)
+
+        log.success(f"deployment complete, took {hours:02d}:{minutes:02d}:{seconds:02d}")
     except KeyboardInterrupt:
         pass
     except Exception as err:
