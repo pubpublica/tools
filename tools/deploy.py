@@ -117,10 +117,14 @@ def check_versions(c, ctx):
 
 def check_dependencies(c, ctx):
     with Guard("· checking dependencies..."):
+        missing = []
         deps = ctx.get("DEPENDENCIES") or []
         for dep in deps:
             if not apt.is_installed(c, dep):
-                raise Exception(f"{dep} is not installed.")
+                missing.append(dep)
+
+        if missing:
+            raise Exception(f"the following dependencies are not installed: {missing}")
 
 
 def pack_project(c, ctx):
